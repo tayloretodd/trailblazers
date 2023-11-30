@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <math.h>
 
 // testing vars
 #define TESTING true
@@ -59,8 +60,8 @@ void setup()
 
   // hard coding; will need to come back to this and
   // determine how to set these values via the GUI
-  ticksPerRotation = 6;
-  wheelDiameter = 22.0;
+  ticksPerRotation = 2;
+  wheelDiameter = 15.0;
   usingInches = true;
   wheelTicks = 0;   // could be a value if starting from a station
   // end hard coding
@@ -92,7 +93,7 @@ void loop() {
     backwardFlag = false;
   }
 
-  totalDistance = wheelTicks * wheelDiameter * unitConversion;
+  totalDistance = (wheelTicks / ticksPerRotation) * (wheelDiameter * PI) * unitConversion;
 
   if(TESTING)
   {
