@@ -3,10 +3,16 @@
 
 // testing vars
 #define TESTING true
+#define INTEGRATION
 
 // define wheel encoder pins
-#define wheelEncoderPin_forward 1
-#define wheelEncoderPin_backward 2
+#ifdef INTEGRATION
+  #define wheelEncoderPin_forward 15
+  #define wheelEncoderPin_backward 16
+#else
+  #define wheelEncoderPin_forward 1
+  #define wheelEncoderPin_backward 2
+#endif
 
 // declare variables and constants
 int ticksPerRotation;
