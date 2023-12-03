@@ -15,17 +15,20 @@
 I2CGPS myI2CGPS;
 TinyGPSPlus gps;
 bool print_measurements = false;
+int times_printed = 0;
 
 // define interrupt
 void buttonISR()
 {
-  for(int i = 0; i < 15; i++)
-  {
-    if (gps.time.isUpdated()) //Check to see if new GPS info is available
-    {
-      displayInfo();
-    }
-  }
+  // while(int i = 0; i < 15; i++)
+  // {
+  //   if (gps.time.isUpdated()) //Check to see if new GPS info is available
+  //   {
+  //     displayInfo();
+  //   }
+  // }
+  print_measurements = true;
+  times_printed = 0;
 }
 
 void setup() {
@@ -58,18 +61,22 @@ void setup() {
 
 void loop()
 {
+  if(times_printed >= 15){
+    print_measurements = false;
+  }
   while (myI2CGPS.available()) //available() returns the number of new bytes available from the GPS module
   {
     gps.encode(myI2CGPS.read()); //Feed the GPS parser
   }
 
-  if(!TESTING)
-  {
+  // if(!TESTING)
+  // {
     if (gps.time.isUpdated() && print_measurements) //Check to see if new GPS info is available
     {
       displayInfo();
+      times_printed++;
     }
-  }
+  // }
 
   
 }
