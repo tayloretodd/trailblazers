@@ -20,13 +20,6 @@ int times_printed = 0;
 // define interrupt
 void buttonISR()
 {
-  // while(int i = 0; i < 15; i++)
-  // {
-  //   if (gps.time.isUpdated()) //Check to see if new GPS info is available
-  //   {
-  //     displayInfo();
-  //   }
-  // }
   print_measurements = true;
   times_printed = 0;
 }
@@ -36,8 +29,11 @@ void setup() {
   Serial.begin(9600);
 
   // configure button pin and interrupt
-  pinMode(Button_Pin, INPUT);
-  attachInterrupt(Button_Pin, buttonISR, HIGH);
+  if(TESTING)
+  {
+    pinMode(Button_Pin, INPUT);
+    attachInterrupt(Button_Pin, buttonISR, HIGH);
+  }
 
   Wire.begin(SDA0_Pin, SCL0_Pin);
   if (myI2CGPS.begin() == false)//Checks for succesful initialization of GPS
@@ -69,16 +65,11 @@ void loop()
     gps.encode(myI2CGPS.read()); //Feed the GPS parser
   }
 
-  // if(!TESTING)
-  // {
-    if (gps.time.isUpdated() && print_measurements) //Check to see if new GPS info is available
-    {
-      displayInfo();
-      times_printed++;
-    }
-  // }
-
-  
+  if (gps.time.isUpdated() && print_measurements) //Check to see if new GPS info is available
+  {
+    displayInfo();
+    times_printed++;
+  }
 }
 
 //Display new GPS info
