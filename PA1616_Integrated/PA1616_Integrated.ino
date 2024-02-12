@@ -45,6 +45,8 @@ bool usingInches;
 bool print_measurements;
 int times_printed;
 
+int bt_stationData[5]; // define arrary to transmit GPS, accelerometer, and wheel encoder data
+
 // define wheel encoder interrupts
 /* if forward wheel encoder is sensed first,
  * this pin (1) will go low first, then the 
@@ -180,9 +182,9 @@ void loop() {
         Serial.print("Game Rotation Vector - r: ");
         Serial.print(sensorValue.un.gameRotationVector.real);
         Serial.print(" i: ");
-        Serial.print(sensorValue.un.gameRotationVector.i);
+        Serial.print(sensorValue.un.gameRotationVector.i); // slope
         Serial.print(" j: ");
-        Serial.print(sensorValue.un.gameRotationVector.j);
+        Serial.print(sensorValue.un.gameRotationVector.j); // cross grade
         Serial.print(" k: ");
         Serial.println(sensorValue.un.gameRotationVector.k);  
         break;
@@ -190,5 +192,25 @@ void loop() {
     ready_for_bno = true;
   }
   #endif
+
+  if(GPS.lat = 'S') {
+    bt_stationData[0] = -1 * GPS.latitude;
+  }  
+  else {
+    bt_stationData[0] = -1 * GPS.latitude;
+  }
+
+  if(GPS.lon = 'W') {
+    bt_stationData[1] = -1 * GPS.longitude;
+  }
+  else {
+    bt_stationData[1] = GPS.longitude;
+  }
+
+  bt_stationData[2] = sensorValue.un.gameRotationVector.i; // need to adjust to do whatever math necessary to convert from ADU to percentage
+  bt_stationData[3] = sensorValue.un.gameRotationVector.j;
+  bt_stationData[4] = totalDistance;
+
+  // this array will be sent to the tablet as data packet #1
 
 }
