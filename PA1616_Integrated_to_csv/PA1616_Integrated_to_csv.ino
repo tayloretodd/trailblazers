@@ -17,8 +17,8 @@
 #define           BNO08X_RESET 6 //BNO
 
 #define GPS_FLAG true
-#define BNO true
-#define HALL true
+#define BNO false
+#define HALL false
 
 
 Adafruit_BNO08x   bno08x(BNO08X_RESET); //Send Reset to BNO-085
@@ -88,51 +88,54 @@ void setup() {
 
 //GPS SETUP  
   // 9600 NMEA is recommended by Rylan
-  if(GPS.begin(9600)){
-    Serial.println("GPS Begin!");
+  if(GPS_FLAG){
+    if(GPS.begin(9600)){
+      Serial.println("GPS Begin!");
+    }
+    else{
+      Serial.println("GPS HAULT!");
+    }
+    GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
+    // Set the update rate
+    GPS.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ); // 1 Hz update rate
+    // For the parsing code to work nicely and have time to sort thru the data, and
+    // print it out we don't suggest using anything higher than 1 Hz
+    delay(1000);
+    // Ask for firmware version
+    GPSSerial.println(PMTK_Q_RELEASE);
   }
-  else{
-    Serial.println("GPS HAULT!");
-  }
-  GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
-  // Set the update rate
-  GPS.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ); // 1 Hz update rate
-  // For the parsing code to work nicely and have time to sort thru the data, and
-  // print it out we don't suggest using anything higher than 1 Hz
-  delay(1000);
-  // Ask for firmware version
-  GPSSerial.println(PMTK_Q_RELEASE);
 
 //BNO
+  if(BNO){
   // Try to initialize BNO-085
     while (!Serial) delay(10);     // will pause Zero, Leonardo, etc until serial console opens
     if (!bno08x.begin_SPI(BNO08X_CS, BNO08X_INT)) {
-    Serial.println("Failed to find BNO08x chip");
-    while (1) { delay(10); }
+      Serial.println("Failed to find BNO08x chip");
+      while (1) { delay(10); }
     }
     Serial.println("BNO08x Found!");
-  for (int n = 0; n < bno08x.prodIds.numEntries; n++) {
-    Serial.print("Part ");
-    Serial.print(bno08x.prodIds.entry[n].swPartNumber);
-    Serial.print(": Version :");
-    Serial.print(bno08x.prodIds.entry[n].swVersionMajor);
-    Serial.print(".");
-    Serial.print(bno08x.prodIds.entry[n].swVersionMinor);
-    Serial.print(".");
-    Serial.print(bno08x.prodIds.entry[n].swVersionPatch);
-    Serial.print(" Build ");
-    Serial.println(bno08x.prodIds.entry[n].swBuildNumber);
-  }
+    for (int n = 0; n < bno08x.prodIds.numEntries; n++) {
+      Serial.print("Part ");
+      Serial.print(bno08x.prodIds.entry[n].swPartNumber);
+      Serial.print(": Version :");
+      Serial.print(bno08x.prodIds.entry[n].swVersionMajor);
+      Serial.print(".");
+      Serial.print(bno08x.prodIds.entry[n].swVersionMinor);
+      Serial.print(".");
+      Serial.print(bno08x.prodIds.entry[n].swVersionPatch);
+      Serial.print(" Build ");
+      Serial.println(bno08x.prodIds.entry[n].swBuildNumber);
+    }
+    setReports();
 
-  setReports();
+    Serial.println("Reading events");
 
-  Serial.println("Reading events");
-
-  if (sensorValue.sensorId == SH2_GAME_ROTATION_VECTOR){
-    defaultR=sensorValue.un.gameRotationVector.real;
-    defaultI=sensorValue.un.gameRotationVector.i;
-    defaultJ=sensorValue.un.gameRotationVector.j;
-    defaultK=sensorValue.un.gameRotationVector.k;
+    if (sensorValue.sensorId == SH2_GAME_ROTATION_VECTOR){
+      defaultR=sensorValue.un.gameRotationVector.real;
+      defaultI=sensorValue.un.gameRotationVector.i;
+      defaultJ=sensorValue.un.gameRotationVector.j;
+      defaultK=sensorValue.un.gameRotationVector.k;
+    }
   }
   
   delay(100);
@@ -172,9 +175,9 @@ void loop() {
 //GPS LOOP
 //Get coordinates if there is a fix, print coords or empty to CSV
   lat = 0;
-  lat_dir = '';
+  lat_dir = '0';
   lon = 0;
-  lon_dir = '';
+  lon_dir = '0';
   char c = GPS.read(); //Read the data from the GPS
   // if (GPSECHO)
   //   if (c) Serial.print(c);
@@ -267,5 +270,4 @@ void loop() {
   bt_stationData[4] = totalDistance;
 
   // this array will be sent to the tablet as data packet #1
-
 }
