@@ -3,7 +3,12 @@
 #include <Adafruit_BNO08x.h> //BNO
 #include <Arduino.h>
 #include <math.h>
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
 
+// Sensor Setup
 #define GPSSerial Serial2 //GPS
 #define RX_PIN    18 //GPS
 #define TX_PIN    17 //GPS
@@ -12,20 +17,16 @@
 #define wheelEncoderPin_forward 15 //Encoder
 #define wheelEncoderPin_backward 16 //Encoder
 
-#define           BNO08X_CS 4 //BNO
-#define           BNO08X_INT 5 //BNO
-#define           BNO08X_RESET 6 //BNO
+#define BNO08X_CS 4 //BNO
+#define BNO08X_INT 5 //BNO
+#define BNO08X_RESET 6 //BNO
 
 #define GPS_FLAG true
 #define BNO false
 #define HALL false
 
-
 Adafruit_BNO08x   bno08x(BNO08X_RESET); //Send Reset to BNO-085
 Adafruit_GPS GPS(&GPSSerial); //Connect to the GPS on hardware
-
-
-uint32_t timer = millis(); //GPS
 
 sh2_SensorValue_t sensorValue;
 int defaultR;
@@ -54,11 +55,73 @@ char lon_dir;
 float station_distance = 0; // for automatic station creation
 bool create_station = false;  // this will be sent from the tablet
 
+uint32_t timer = millis(); //GPS
+
+//Bluetooth Setup
+BLECharacteristic *pCharacteristic;
+bool deviceConnected = false;
+//char rxValue = '\0';
+const int readPin = 5  ; // Use GPIO number. See ESP32 board pinouts
+const int LED = 48;      // pin of the RGB LED
+
+#define SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"//"2F05023F-F495-4259-8504-CFB307756EAF"// // UART service UUID
+#define CHARACTERISTIC_UUID_RX "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"//"B8CE9199-227D-422E-9A96-FD6766014BA8"
+#define CHARACTERISTIC_UUID_TX "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"//"DD9E2F15-EE4B-4F96-8231-18ADB1121294"
+
+#define CHUNK_SIZE 20 // Define the chunk size
+
 float bt_stationData[5]; // define arrary to transmit GPS, accelerometer, and wheel encoder data
 
+class MyServerCallbacks: public BLEServerCallbacks {
+    void onConnect(BLEServer* pServer) {
+      deviceConnected = true;
+    };
+
+    void onDisconnect(BLEServer* pServer) {
+      deviceConnected = false;
+    }
+};
+
+class MyCallbacks: public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic *pCharacteristic) {
+      std::string rxValue = pCharacteristic->getValue();
+
+      if (rxValue.length() > 0) {
+        Serial.println("*********");
+        Serial.print("Received Value: ");
+
+        for (int i = 0; i < rxValue.length(); i++) {
+          Serial.print(rxValue[i]); // print receiving key
+        }
+
+        Serial.println();
+
+        // Do stuff based on the command received from the app
+        if (rxValue.find("A") != -1) { 
+          Serial.print("Turning ON!");
+         // txValue = analogRead(readPin) + 1;
+          digitalWrite(LED, HIGH); 
+          neopixelWrite(48,0,RGB_BRIGHTNESS,50);
+          //pixels.fill(0xFFFF00); //RED   
+          //pixels.show();
+        }
+        else if (rxValue.find("B") != -1) {
+          Serial.print("Turning OFF!");
+          //txValue = random(1, 10);
+          digitalWrite(LED, LOW);
+          neopixelWrite(48,64,0,RGB_BRIGHTNESS);
+          //pixels.fill(0x800080); //YELLOW
+          //pixels.show();
+        }
+
+        Serial.println();
+        Serial.println("*********");
+      }
+    }
+};
+
 // define wheel encoder interrupts
-void ForwardISR()
-{
+void ForwardISR() {
   /* if forward wheel encoder is sensed first,
   * this pin (1) will go low first, then the 
   * backward pin will go low after, the cart
@@ -161,25 +224,61 @@ void setup() {
     Serial.print("r, i, j, k");
   }
   Serial.println();
+
+  // Blutooth Setup
+  pinMode(LED, OUTPUT); // setting the RGB pin as the output
+
+  // Create the BLE Device
+  BLEDevice::init("ESP32 UART Test"); // Give the ESP32 a name
+  //BLEDevice::setMTU(100);
+
+  // Create the BLE Server
+  BLEServer *pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
+
+  // Create the BLE Service
+  BLEService *pService = pServer->createService(SERVICE_UUID);
+
+  // Create a BLE Characteristic
+  pCharacteristic = pService->createCharacteristic(
+                      CHARACTERISTIC_UUID_TX,
+                      BLECharacteristic::PROPERTY_NOTIFY
+                    );
+  
+  pCharacteristic->addDescriptor(new BLE2902());
+
+  BLECharacteristic *pCharacteristic = pService->createCharacteristic(
+                                         CHARACTERISTIC_UUID_RX,
+                                         BLECharacteristic::PROPERTY_WRITE
+                                       );
+
+  pCharacteristic->setCallbacks(new MyCallbacks());
+
+  // Start the service
+  pService->start();
+
+  // Start advertising
+  pServer->getAdvertising()->start();
+  Serial.println("Waiting for a client connection to notify...");
 }
 
 void loop() {
-//Encoder LOOP
-//Calculate distance and print to csv every time loop executes
+  //Encoder LOOP
+  //Calculate distance and print to csv every time loop executes
   if(forwardFlag) { // reset flags
     forwardFlag = false;
     backwardFlag = false;}
     prevDistance = totalDistance;
     totalDistance = ((wheelTicks / ticksPerRotation) * (wheelDiameter * PI) * unitConversion)/NumMags;
-    station_distance += totalDistance - prevDistance;
+    station_distance += totalDistance - prevDistance
   #if HALL
     // Serial.print("Total distance = ");
     Serial.print(totalDistance);
     // Serial.println(" in");
   #endif
 
-//GPS LOOP
-//Get coordinates if there is a fix, print coords or empty to CSV
+  //GPS LOOP
+  //Get coordinates if there is a fix, print coords or empty to CSV
   lat = 0;
   lat_dir = '0';
   lon = 0;
@@ -194,34 +293,27 @@ void loop() {
   if (millis() - timer > 2000) {
     timer = millis(); // reset the timer
     if (GPS.fix) {
-      //#if (GPS_FIX)
-        // Serial.print("Fix");
-        Serial.print(GPS.latitude, 4); 
-        Serial.print(GPS.lat); Serial.print(", ");
-        Serial.print(GPS.longitude, 4); 
-        Serial.println(GPS.lon);
         lat = GPS.latitude;
         lat_dir = GPS.lat;
         lon = GPS.longitude;
         lon_dir = GPS.lon;
-      //#endif
     }
   }
   // Print GPS data to csv
-  // if(GPS_FLAG){
-  //   if(HALL){
-  //   Serial.print(", ");
-  //   }
-  //   if(lat != 0 && lon != 0){
-  //     Serial.print(lat); Serial.print(lat_dir); Serial.print(", ");
-  //     Serial.print(lon); Serial.print(lon_dir);
-  //   }
-  //   else{
-  //     Serial.print(", ");
-  //   }
-  // }
+  if(GPS_FLAG){
+    if(HALL){
+    Serial.print(", ");
+    }
+    if(lat != 0 && lon != 0){
+      Serial.print(lat); Serial.print(lat_dir); Serial.print(", ");
+      Serial.print(lon); Serial.print(lon_dir);
+    }
+    else{
+      Serial.print(", ");
+    }
+  }
 
-//BNO Loop
+  //BNO Loop
   #if BNO
   if(GPS_FLAG || HALL){
     Serial.print(", ");
@@ -255,7 +347,7 @@ void loop() {
   }
   #endif
 
-  // Serial.println();
+  Serial.println();
 
   // if data needs to be sent to the tablet, do it here
   if(station_distance > 300 || create_station){  //recorded 25 feet or user made a station
@@ -278,7 +370,13 @@ void loop() {
     bt_stationData[4] = totalDistance;
 
     // this array will be sent to the tablet as data packet #1
-    // BLUETOOTH CODE HERE 
+    // BLUETOOTH CODE HERE
+    pCharacteristic->setValue(bt_stationData); //-> string part
+
+    pCharacteristic->notify(); // Send the value to the app!
+    Serial.print("*** Sent Value: ");
+    Serial.print(bt_stationData);
+    Serial.println(" ***");
 
     station_distance = 0;
     create_station = false;
