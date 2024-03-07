@@ -9,16 +9,19 @@
 #define TX_PIN    17 //GPS
 #define GPSECHO false //GPS
 
-#define wheelEncoderPin_forward 15 //Encoder
+#define wheelEncoderPin_forward 38 //Encoder
 #define wheelEncoderPin_backward 16 //Encoder
 
 #define           BNO08X_CS 4 //BNO
 #define           BNO08X_INT 5 //BNO
 #define           BNO08X_RESET 6 //BNO
 
-#define GPS_FLAG true
+#define GPS_FLAG false
 #define BNO false
-#define HALL false
+#define HALL true
+
+#define HALL_ISR true
+#define BNO_ISR false
 
 
 Adafruit_BNO08x   bno08x(BNO08X_RESET); //Send Reset to BNO-085
@@ -40,13 +43,17 @@ int wheelTicks;
 float totalDistance;
 bool forwardFlag;
 bool backwardFlag;
+bool readFlag;
 float unitConversion;
 bool usingInches;
 bool print_measurements;
 int times_printed;
+int test = 0;
 
-int bt_stationData[5]; // define arrary to transmit GPS, accelerometer, and wheel encoder data
 
+void BackwardISR(){
+  backwardFlag = true;
+}
 // define wheel encoder interrupts
 /* if forward wheel encoder is sensed first,
  * this pin (1) will go low first, then the 
@@ -55,8 +62,29 @@ int bt_stationData[5]; // define arrary to transmit GPS, accelerometer, and whee
  * distance should be increased */
 void ForwardISR()
 {
-  forwardFlag = backwardFlag ? false : true; // if backward flag is already set, this interrupt was triggered secont
-  wheelTicks++;
+  //forwardFlag = backwardFlag ? false : true; // if backward flag is already set, this interrupt was triggered secont
+  //if (backwardFlag){
+    wheelTicks++;
+  //}
+ 
+  //Serial.println(wheelTicks);
+  if (wheelTicks % 1 == 0){
+    #if HALL_ISR
+      readFlag = true;
+    #endif
+    #if BNO_ISR
+      // Serial.print("Game Rotation Vector - r: ");
+      // Serial.print(sensorValue.un.gameRotationVector.real);
+      // Serial.print(" i: ");
+      // Serial.print(sensorValue.un.gameRotationVector.i);
+      // Serial.print(" j: ");
+      // Serial.print(sensorValue.un.gameRotationVector.j);
+      // Serial.print(" k: ");
+      // Serial.println(sensorValue.un.gameRotationVector.k);  
+      // Serial.print(" Accel Z");
+      // Serial.println(sensorValue.un.accelerometer.z);
+    #endif
+  }
 }
 
 // Here is where you define the sensor outputs you want to receive
@@ -73,7 +101,9 @@ void setup() {
 //Encoder Setup
   pinMode(wheelEncoderPin_forward, INPUT); //Sets Pin to INPUT
   attachInterrupt(wheelEncoderPin_forward, ForwardISR, FALLING); //Sets pin to call Forward service routine on Falling Edge
-  ticksPerRotation = 2;
+  pinMode(wheelEncoderPin_backward, INPUT); //Sets Pin to INPUT
+  attachInterrupt(wheelEncoderPin_backward, BackwardISR, FALLING); //Sets pin to call Back service routine on Falling Edge
+  ticksPerRotation = 8;
   wheelDiameter = 15.0;
   usingInches = true;
   wheelTicks = 0;   // could be a value if starting from a station
@@ -139,17 +169,29 @@ void loop() {
   if(forwardFlag) { // reset flags
     forwardFlag = false;
     backwardFlag = false;}
-    totalDistance = ((wheelTicks / ticksPerRotation) * (wheelDiameter * PI) * unitConversion)/NumMags;
-  #if HALL
-    Serial.print("Total distance = ");
-    Serial.print(totalDistance);
-    Serial.println(" in");
-  #endif
+    // totalDistance = ((wheelTicks / ticksPerRotation) * (wheelDiameter * PI) * unitConversion)/NumMags;
+    
+   #if HALL
+  //   Serial.print("Total distance = ");
+  //   Serial.print(totalDistance);
+  //   Serial.println(" in");
+  if(readFlag){
+    totalDistance = ((wheelTicks / ticksPerRotation) * (wheelDiameter * PI) * unitConversion);
+      Serial.print("Total distance = ");
+      Serial.print(totalDistance);
+      Serial.print(" in");
+      Serial.print("Ticks =");
+      Serial.println(wheelTicks);
+      readFlag = 0;
+    }
+   #endif
+   
 
 //GPS LOOP
+#if GPS
   char c = GPS.read(); //Read the data from the GPS
   if (GPSECHO)
-    if (c) Serial.print(c);
+    if (c) //Serial.print(c);
   if (GPS.newNMEAreceived()) {
     if (!GPS.parse(GPS.lastNMEA())){} // this also sets the newNMEAreceived() flag to false
       //return; // we can fail to parse a sentence in which case we should just wait for another
@@ -159,19 +201,30 @@ void loop() {
     if (GPS.fix) {
       //#if (GPS_FIX)
         //Serial.print("Fix");
-        Serial.print(GPS.latitude, 4); Serial.print(GPS.lat);
-        Serial.print(", ");
-        Serial.print(GPS.longitude, 4); Serial.println(GPS.lon);
+        //Serial.print(GPS.latitude, 4); Serial.print(GPS.lat);
+        //Serial.print(", ");
+        //Serial.print(GPS.longitude, 4); Serial.println(GPS.lon);
       //#endif
     }
   }
+#endif
 //BNO Loop
   #if BNO
   if(ready_for_bno){
     if (bno08x.wasReset()) {
-      Serial.print("sensor was reset ");
+      //Serial.print("sensor was reset ");
+      sh2_setTareNow(SH2_TARE_Z,SH2_TARE_BASIS_GAMING_ROTATION_VECTOR);
       setReports();
     }
+    // test++;
+    // if (test > 1000){
+    //   test = 0;
+    //   //Serial.print("sensor was TARED ");
+    //   delay(1000);
+    //   sh2_setTareNow(SH2_TARE_Z,SH2_TARE_BASIS_GAMING_ROTATION_VECTOR);
+    //   sh2_setTareNow(SH2_TARE_X,SH2_TARE_BASIS_GAMING_ROTATION_VECTOR);
+    //   sh2_setTareNow(SH2_TARE_Y,SH2_TARE_BASIS_GAMING_ROTATION_VECTOR);
+    // }
 
     if (! bno08x.getSensorEvent(&sensorValue)) {
       return;
@@ -179,38 +232,60 @@ void loop() {
 
     switch (sensorValue.sensorId) {
       case SH2_GAME_ROTATION_VECTOR:
-        Serial.print("Game Rotation Vector - r: ");
-        Serial.print(sensorValue.un.gameRotationVector.real);
-        Serial.print(" i: ");
-        Serial.print(sensorValue.un.gameRotationVector.i); // slope
-        Serial.print(" j: ");
-        Serial.print(sensorValue.un.gameRotationVector.j); // cross grade
-        Serial.print(" k: ");
-        Serial.println(sensorValue.un.gameRotationVector.k);  
+        // //Serial.print("Game Rotation Vector - r: ");
+        // Serial.print(sensorValue.un.gameRotationVector.real);
+        // Serial.print(", ");
+        // //Serial.print(" i: ");
+        // Serial.print(sensorValue.un.gameRotationVector.i);
+        // Serial.print(", ");
+        // //Serial.print(" j: ");
+        // Serial.print(sensorValue.un.gameRotationVector.j);
+        // Serial.print(", ");
+        // //Serial.print(" k: ");
+        // Serial.print(sensorValue.un.gameRotationVector.k);  
+        // Serial.print(", ");
+        // //Serial.print(" Accel Z:");
+        // Serial.print(sensorValue.un.accelerometer.z);
+        // Serial.print(", ");
+        // //Serial.print(" Accel X:");
+        // Serial.print(sensorValue.un.accelerometer.x);
+        // Serial.print(", ");
+        // //Serial.print(" Accel Y:");
+        // Serial.print(sensorValue.un.accelerometer.y);
+        // Serial.print(", ");
+        // //Serial.print(" RAW_Accel Z:");
+        // Serial.print(sensorValue.un.rawAccelerometer.z);
+        // Serial.print(", ");
+        // // Serial.print(" RAW_Accel X:");
+        // Serial.print(sensorValue.un.rawAccelerometer.x);
+        // Serial.print(", ");
+        // //Serial.print(" RAW_Accel Y:");
+        // Serial.print(sensorValue.un.rawAccelerometer.y);
+        // Serial.print(", ");
+        // //Serial.print(" Gyro Z:");
+        // Serial.print(sensorValue.un.gyroscope.z);
+        // Serial.print(", ");
+        // //Serial.print(" Gyro X:");
+        // Serial.print(sensorValue.un.gyroscope.x);
+        // Serial.print(", ");
+        // //Serial.print(" Gyro Y:");
+        // Serial.print(sensorValue.un.gyroscope.y);
+        // Serial.print(", ");
+        // //Serial.print(" RAW_Gyro Z:");
+        // Serial.print(sensorValue.un.rawGyroscope.z);
+        // Serial.print(", ");
+        // //Serial.print(" RAW_Gyro X:");
+        // Serial.print(sensorValue.un.rawGyroscope.x);
+        // Serial.print(", ");
+        // //Serial.print(" RAW_Gyro Y:");
+        // Serial.println(sensorValue.un.rawGyroscope.y);
+        delay(5);
         break;
     }
+    
+    
     ready_for_bno = true;
   }
   #endif
-
-  if(GPS.lat = 'S') {
-    bt_stationData[0] = -1 * GPS.latitude;
-  }  
-  else {
-    bt_stationData[0] = -1 * GPS.latitude;
-  }
-
-  if(GPS.lon = 'W') {
-    bt_stationData[1] = -1 * GPS.longitude;
-  }
-  else {
-    bt_stationData[1] = GPS.longitude;
-  }
-
-  bt_stationData[2] = sensorValue.un.gameRotationVector.i; // need to adjust to do whatever math necessary to convert from ADU to percentage
-  bt_stationData[3] = sensorValue.un.gameRotationVector.j;
-  bt_stationData[4] = totalDistance;
-
-  // this array will be sent to the tablet as data packet #1
 
 }
