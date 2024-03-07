@@ -49,10 +49,12 @@ bool usingInches;
 bool print_measurements;
 int times_printed;
 int test = 0;
+unsigned long intTime = 0;
+unsigned long lastTime = 0;
 
 
 void BackwardISR(){
-  backwardFlag = true;
+  ///backwardFlag = true;
 }
 // define wheel encoder interrupts
 /* if forward wheel encoder is sensed first,
@@ -60,17 +62,23 @@ void BackwardISR(){
  * backward pin will go low after, the cart
  * is moving forward in this case, and
  * distance should be increased */
-void ForwardISR()
+void IRAM_ATTR ForwardISR()
 {
-  //forwardFlag = backwardFlag ? false : true; // if backward flag is already set, this interrupt was triggered secont
-  //if (backwardFlag){
-    wheelTicks++;
-  //}
+  noInterrupts();
+  intTime = millis();
+  if((digitalRead(wheelEncoderPin_forward) == LOW) && (intTime - lastTime > 150))
+    {
+      wheelTicks++;
+      if (wheelTicks % 4 == 0){
+        readFlag = 1;
+      }
+      lastTime=intTime;
+    }
  
-  //Serial.println(wheelTicks);
+
   if (wheelTicks % 1 == 0){
     #if HALL_ISR
-      readFlag = true;
+      //readFlag = true;
     #endif
     #if BNO_ISR
       // Serial.print("Game Rotation Vector - r: ");
@@ -100,9 +108,9 @@ void setup() {
   Serial2.begin(9600, SERIAL_8N1, RX_PIN, TX_PIN); //Sets correct pins for GPS
 //Encoder Setup
   pinMode(wheelEncoderPin_forward, INPUT); //Sets Pin to INPUT
-  attachInterrupt(wheelEncoderPin_forward, ForwardISR, FALLING); //Sets pin to call Forward service routine on Falling Edge
+  attachInterrupt(digitalPinToInterrupt(wheelEncoderPin_forward), ForwardISR, FALLING); //Sets pin to call Forward service routine on Falling Edge
   pinMode(wheelEncoderPin_backward, INPUT); //Sets Pin to INPUT
-  attachInterrupt(wheelEncoderPin_backward, BackwardISR, FALLING); //Sets pin to call Back service routine on Falling Edge
+  attachInterrupt(digitalPinToInterrupt(wheelEncoderPin_backward), BackwardISR, FALLING); //Sets pin to call Back service routine on Falling Edge
   ticksPerRotation = 8;
   wheelDiameter = 15.0;
   usingInches = true;
@@ -110,6 +118,7 @@ void setup() {
   NumMags = 8;
   unitConversion = 1;
   print_measurements = false; 
+  
 
 //GPS SETUP  
   // 9600 NMEA is recommended by Rylan
@@ -176,13 +185,27 @@ void loop() {
   //   Serial.print(totalDistance);
   //   Serial.println(" in");
   if(readFlag){
+    
     totalDistance = ((wheelTicks / ticksPerRotation) * (wheelDiameter * PI) * unitConversion);
       Serial.print("Total distance = ");
       Serial.print(totalDistance);
       Serial.print(" in");
       Serial.print("Ticks =");
       Serial.println(wheelTicks);
+      
       readFlag = 0;
+      Serial.print(" Accel Z:");
+        Serial.print(sensorValue.un.accelerometer.z);
+        Serial.print(", ");
+        Serial.print(" Accel X:");
+        Serial.print(sensorValue.un.accelerometer.x);
+        Serial.print(", ");
+        Serial.print(" Accel Y:");
+        Serial.print(sensorValue.un.accelerometer.y);
+      
+      
+      interrupts();
+      
     }
    #endif
    
