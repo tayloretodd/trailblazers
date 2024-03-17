@@ -279,7 +279,7 @@ void loop() {
     #if PUTTY
     readFlag = 0;
       #if BNO
-        Serial.print( AccelZ*125);
+        Serial.print( sensorValue.un.accelerometer.z*125);
         Serial.print(", ");
         Serial.print(sensorValue.un.accelerometer.x*125);
         Serial.print(", ");
@@ -325,7 +325,7 @@ void loop() {
       
       readFlag = 0;
       Serial.print(" Accel Z:");
-        Serial.print( AccelZ*125);
+        Serial.print( sensorValue.un.accelerometer.z*125);
         Serial.print(", ");
         Serial.print(" Accel X:");
         Serial.print(sensorValue.un.accelerometer.x*125);
