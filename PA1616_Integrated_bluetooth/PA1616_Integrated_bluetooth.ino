@@ -58,15 +58,26 @@ bool create_station = false;  // this will be sent from the tablet
 uint32_t timer = millis(); //GPS
 
 //Bluetooth Setup
-BLECharacteristic *pCharacteristic;
+// having each piece of data be its own characteristic will simplify sending multiple packets.
+BLECharacteristic *pCharacteristic_GPS;   // GPS data characteristic
+BLECharacteristic *pCharacteristic_ACC;   // Accelerometer data characteristic
+BLECharacteristic *pCharacteristic_DIST;  // Gyroscope data characteristic
+BLECharacteristic *pCharacteristic_BATT;  // Battery voltage characteristic
+BLECharacteristic *pCharacteristic_ENV;   // environmental sensors data characteristic (may have to split this up)
+BLECharacteristic *pCharacteristic_RX; // characteristic for writing to ESP32
+
 bool deviceConnected = false;
 //char rxValue = '\0';
 const int readPin = 5  ; // Use GPIO number. See ESP32 board pinouts
 const int LED = 48;      // pin of the RGB LED
 
-#define SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"//"2F05023F-F495-4259-8504-CFB307756EAF"// // UART service UUID
-#define CHARACTERISTIC_UUID_RX "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"//"B8CE9199-227D-422E-9A96-FD6766014BA8"
-#define CHARACTERISTIC_UUID_TX "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"//"DD9E2F15-EE4B-4F96-8231-18ADB1121294"
+#define SERVICE_UUID           "6E400001-B5A3-F393-E0A9-E50E24DCCA9A"
+#define CHARACTERISTIC_UUID_RX "6E400002-B5A3-F393-E0A9-E50E24DCCA9B"   // for tablet writes to ESP32
+#define CHARACTERISTIC_UUID_GPS "6E400003-B5A3-F393-E0A9-E50E24DCCA9C"
+#define CHARACTERISTIC_UUID_ACC "6E400003-B5A3-F393-E0A9-E50E24DCCA9D"
+#define CHARACTERISTIC_UUID_DIST "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
+#define CHARACTERISTIC_UUID_BATT "6E400003-B5A3-F393-E0A9-E50E24DCCA9F"
+#define CHARACTERISTIC_UUID_ENV "6E400003-B5A3-F393-E0A9-E50E24DCCA90"
 
 #define CHUNK_SIZE 20 // Define the chunk size
 
@@ -229,7 +240,7 @@ void setup() {
   pinMode(LED, OUTPUT); // setting the RGB pin as the output
 
   // Create the BLE Device
-  BLEDevice::init("ESP32 UART Test"); // Give the ESP32 a name
+  BLEDevice::init("TrailSense ESP32"); // Give the ESP32 a name
   //BLEDevice::setMTU(100);
 
   // Create the BLE Server
@@ -239,20 +250,49 @@ void setup() {
   // Create the BLE Service
   BLEService *pService = pServer->createService(SERVICE_UUID);
 
-  // Create a BLE Characteristic
-  pCharacteristic = pService->createCharacteristic(
-                      CHARACTERISTIC_UUID_TX,
-                      BLECharacteristic::PROPERTY_NOTIFY
-                    );
-  
-  pCharacteristic->addDescriptor(new BLE2902());
-
-  BLECharacteristic *pCharacteristic = pService->createCharacteristic(
+  // Create BLE Characteristics
+  // Write to ESP Characteristic
+  pCharacteristic_RX = pService->createCharacteristic(
                                          CHARACTERISTIC_UUID_RX,
                                          BLECharacteristic::PROPERTY_WRITE
                                        );
+  pCharacteristic_RX->setCallbacks(new MyCallbacks());
+  pCharacteristic_RX->addDescriptor(new BLE2902());
+  
+  // Transmit GPS data Characteristic
+  pCharacteristic_GPS = pService->createCharacteristic(
+                      CHARACTERISTIC_UUID_GPS,
+                      BLECharacteristic::PROPERTY_NOTIFY
+                    );
+  pCharacteristic_GPS->addDescriptor(new BLE2902());
 
-  pCharacteristic->setCallbacks(new MyCallbacks());
+  // Transmit accelerometer data Characteristic
+  pCharacteristic_ACC = pService->createCharacteristic(
+                      CHARACTERISTIC_UUID_ACC,
+                      BLECharacteristic::PROPERTY_NOTIFY
+                    );
+  pCharacteristic_ACC->addDescriptor(new BLE2902());
+
+  // Transmit whel encoder data Characteristic
+  pCharacteristic_DIST = pService->createCharacteristic(
+                      CHARACTERISTIC_UUID_DIST,
+                      BLECharacteristic::PROPERTY_NOTIFY
+                    );
+  pCharacteristic_DIST->addDescriptor(new BLE2902());
+
+  // Transmit battery life data Characteristic
+  pCharacteristic_BATT = pService->createCharacteristic(
+                      CHARACTERISTIC_UUID_BATT,
+                      BLECharacteristic::PROPERTY_NOTIFY
+                    );
+  pCharacteristic_BATT->addDescriptor(new BLE2902());
+
+    // Transmit environmental sensors data Characteristic
+  pCharacteristic_ENV = pService->createCharacteristic(
+                      CHARACTERISTIC_UUID_ACC,
+                      BLECharacteristic::PROPERTY_NOTIFY
+                    );
+  pCharacteristic_ENV->addDescriptor(new BLE2902());
 
   // Start the service
   pService->start();
@@ -270,7 +310,7 @@ void loop() {
     backwardFlag = false;}
     prevDistance = totalDistance;
     totalDistance = ((wheelTicks / ticksPerRotation) * (wheelDiameter * PI) * unitConversion)/NumMags;
-    station_distance += totalDistance - prevDistance
+    station_distance += totalDistance - prevDistance;
   #if HALL
     // Serial.print("Total distance = ");
     Serial.print(totalDistance);
@@ -371,12 +411,33 @@ void loop() {
 
     // this array will be sent to the tablet as data packet #1
     // BLUETOOTH CODE HERE
-    pCharacteristic->setValue(bt_stationData); //-> string part
+    // Onse service with several characteristics will make it simpler to transmit all sensor data in different packets
+    // 
 
-    pCharacteristic->notify(); // Send the value to the app!
-    Serial.print("*** Sent Value: ");
-    Serial.print(bt_stationData);
+    // set values for all characteristics
+    String gps_data = String(bt_stationData[0], 4) + String(lat_dir) + "," +
+                      String(bt_stationData[1], 4) + String(lon_dir);
+    pCharacteristic_GPS->setValue(gps_data.c_str()); //-> string part
+    pCharacteristic_GPS->notify(); // Send the value to the app!
+    Serial.print("*** Sent GPS Data Value: ");
+    Serial.print(gps_data);
     Serial.println(" ***");
+
+    String acc_data = String(bt_stationData[2], 4) + "," +
+                      String(bt_stationData[3], 4);
+    pCharacteristic_ACC->setValue(acc_data.c_str());
+    pCharacteristic_ACC->notify(); // Send the value to the app!
+    Serial.print("*** Sent Accelerometer Data Value: ");
+    Serial.print(acc_data);
+    Serial.println(" ***");
+
+    String dist_data = String(bt_stationData[4], 4);
+    pCharacteristic_DIST->setValue(dist_data.c_str());
+    pCharacteristic_DIST->notify(); // Send the value to the app!
+    Serial.print("*** Sent Wheel Encoder Data Value: ");
+    Serial.print(dist_data);
+    Serial.println(" ***");
+
 
     station_distance = 0;
     create_station = false;
