@@ -1,0 +1,6 @@
+{
+  "appTitle": "gui_again",
+  "@appTitle": {
+    "description": "The title of the application"
+  }
+}
